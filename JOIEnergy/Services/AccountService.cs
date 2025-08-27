@@ -1,21 +1,21 @@
-﻿using System.Collections.Generic;
+﻿using JOIEnergy.Interface;
 
 namespace JOIEnergy.Services
 {
     public class AccountService : IAccountService
-    { 
-        private Dictionary<string, string> _smartMeterToPricePlanAccounts;
-
-        public AccountService(Dictionary<string, string> smartMeterToPricePlanAccounts) {
-            _smartMeterToPricePlanAccounts = smartMeterToPricePlanAccounts;
+    {
+        private readonly IDataSeeder _dataSeeder;
+        public AccountService(IDataSeeder dataSeeder) {
+            _dataSeeder = dataSeeder;
         }
-
-        public string GetPricePlanIdForSmartMeterId(string smartMeterId) {
-            if (!_smartMeterToPricePlanAccounts.ContainsKey(smartMeterId))
+        public string GetPricePlanIdForSmartMeterId(string smartMeterId)
+        { 
+            var smartMeter = _dataSeeder.GetSmartMeterAccounts();
+            if (!smartMeter.ContainsKey(smartMeterId))
             {
                 return null;
             }
-            return _smartMeterToPricePlanAccounts[smartMeterId];
+            return smartMeter[smartMeterId];
         }
     }
 }
