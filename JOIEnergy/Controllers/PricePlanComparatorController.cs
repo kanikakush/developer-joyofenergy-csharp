@@ -9,7 +9,8 @@ using Newtonsoft.Json.Linq;
 
 namespace JOIEnergy.Controllers
 {
-    [Route("price-plans")]
+    [ApiController]
+    [Route("api/[controller]")]
     public class PricePlanComparatorController : Controller
     {
         public const string PRICE_PLAN_ID_KEY = "pricePlanId";
@@ -19,8 +20,8 @@ namespace JOIEnergy.Controllers
 
         public PricePlanComparatorController(IPricePlanService pricePlanService, IAccountService accountService)
         {
-            this._pricePlanService = pricePlanService;
-            this._accountService = accountService;
+            _pricePlanService = pricePlanService;
+            _accountService = accountService;
         }
 
         [HttpGet("compare-all/{smartMeterId}")]

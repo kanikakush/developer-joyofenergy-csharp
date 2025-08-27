@@ -1,6 +1,7 @@
 ﻿using JOIEnergy.Domain;
 using JOIEnergy.Services;
 using Microsoft.AspNetCore.Mvc;
+using System;
 
 namespace JOIEnergy.Controllers
 {
@@ -17,18 +18,37 @@ namespace JOIEnergy.Controllers
         [HttpPost("store")]
         public IActionResult Post([FromBody] MeterReadings meterReadings)
         {
-            if (!ModelState.IsValid)
+            try
             {
-                return new BadRequestObjectResult("Internal Server Error" + ModelState);
+                if (!ModelState.IsValid)
+                {
+                    return new BadRequestObjectResult("Invalid input" + ModelState);
+                }
+                var result = _meterReadingService.StoreReadings(meterReadings.SmartMeterId, meterReadings.ElectricityReadings);
+                return new OkObjectResult(result);
             }
-            var result = _meterReadingService.StoreReadings(meterReadings.SmartMeterId, meterReadings.ElectricityReadings);
-            return new OkObjectResult(result);
+            catch(Exception ex)
+            {
+                return new BadRequestObjectResult("Internal Server Error" + ex.Message);
+            }
         }
 
         [HttpGet("read/{smartMeterId}")]
-        public ObjectResult GetReading(string smartMeterId)
+        public IActionResult GetReading(string smartMeterId)
         {
-            return new OkObjectResult(_meterReadingService.GetReadings(smartMeterId));
+            try
+            {
+                var readings = _meterReadingService.GetReadings(smartMeterId);
+                if(readings == null || readings.Count == 0)
+                {
+                    return new NotFoundObjectResult("No Readings found for the Smart Meter Id: " + smartMeterId);
+                }
+                return new OkObjectResult(readings);
+            }
+            catch(Exception ex)
+            {
+                return new BadRequestObjectResult("Internal Server Error" + ex.Message);
+            }
         }
     }
 }
