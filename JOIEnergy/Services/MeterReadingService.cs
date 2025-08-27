@@ -1,30 +1,32 @@
-﻿using System;
+﻿using JOIEnergy.Domain;
+using JOIEnergy.Interface;
 using System.Collections.Generic;
-using JOIEnergy.Domain;
 
 namespace JOIEnergy.Services
 {
     public class MeterReadingService : IMeterReadingService
     {
-        public Dictionary<string, List<ElectricityReading>> MeterAssociatedReadings { get; set; }
-        public MeterReadingService(Dictionary<string, List<ElectricityReading>> meterAssociatedReadings)
+        private readonly IDataSeeder _dataSeeder;
+        public MeterReadingService(IDataSeeder dataSeeder)
         {
-            MeterAssociatedReadings = meterAssociatedReadings;
+            _dataSeeder = dataSeeder;
         }
-
-        public List<ElectricityReading> GetReadings(string smartMeterId) {
-            if (MeterAssociatedReadings.ContainsKey(smartMeterId)) {
-                return MeterAssociatedReadings[smartMeterId];
-            }
-            return new List<ElectricityReading>();
+        public List<ElectricityReading> GetReadings(string smartMeterId)
+        {
+            var readings = _dataSeeder.GetElectricityReadings();
+            return readings.ContainsKey(smartMeterId)
+                ? readings[smartMeterId]
+                : new List<ElectricityReading>();
         }
-
-        public void StoreReadings(string smartMeterId, List<ElectricityReading> electricityReadings) {
-            if (!MeterAssociatedReadings.ContainsKey(smartMeterId)) {
-                MeterAssociatedReadings.Add(smartMeterId, new List<ElectricityReading>());
+        public IReadOnlyDictionary<string, List<ElectricityReading>> StoreReadings(string smartMeterId, List<ElectricityReading> electricityReadings)
+        {
+            var readings = _dataSeeder.GetElectricityReadings();
+            if (!readings.ContainsKey(smartMeterId))
+            {
+                _dataSeeder.AddReadings(smartMeterId, new List<ElectricityReading>());
             }
-
-            electricityReadings.ForEach(electricityReading => MeterAssociatedReadings[smartMeterId].Add(electricityReading));
+            electricityReadings.ForEach(electricityReading => readings[smartMeterId].Add(electricityReading));
+            return readings;
         }
     }
 }
