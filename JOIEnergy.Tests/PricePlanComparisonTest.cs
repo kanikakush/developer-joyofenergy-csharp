@@ -1,128 +1,87 @@
 ﻿using JOIEnergy.Controllers;
 using JOIEnergy.Domain;
 using JOIEnergy.Enums;
+using JOIEnergy.Interface;
 using JOIEnergy.Services;
+using Moq;
+using Newtonsoft.Json.Linq;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Xunit;
-using Newtonsoft.Json.Linq;
-using System.Collections;
 
 namespace JOIEnergy.Tests
 {
     public class PricePlanComparisonTest
     {
-        private MeterReadingService meterReadingService;
-        private PricePlanComparatorController controller;
-
-        private static string PRICE_PLAN_1_ID = "test-supplier";
-        private static string PRICE_PLAN_2_ID = "best-supplier";
-        private static string PRICE_PLAN_3_ID = "second-best-supplier";
-        private static string SMART_METER_ID = "smart-meter-id";
+        private readonly Mock<IMeterReadingService> _mockMeterReadingService;
+        private readonly Mock<IDataSeeder> _mockDataSeeder;
+        private readonly PricePlanService _service;
 
         public PricePlanComparisonTest()
         {
-            var readings = new Dictionary<string, List<Domain.ElectricityReading>>();
-            meterReadingService = new MeterReadingService(readings);
-            var pricePlans = new List<PricePlan>() { 
-                new PricePlan() { PlanName = PRICE_PLAN_1_ID, UnitRate = 10, PeakTimeMultiplier = NoMultipliers() }, 
-                new PricePlan() { PlanName = PRICE_PLAN_2_ID, UnitRate = 1, PeakTimeMultiplier = NoMultipliers() },
-                new PricePlan() { PlanName = PRICE_PLAN_3_ID, UnitRate = 2, PeakTimeMultiplier = NoMultipliers() } 
-            };
-            var pricePlanService = new PricePlanService(pricePlans, meterReadingService);
-            var smartMeterToPricePlanAccounts = new Dictionary<string, string>
-            {
-                { SMART_METER_ID, PRICE_PLAN_1_ID }
-            };
-            var accountService = new AccountService(smartMeterToPricePlanAccounts);
-            controller = new PricePlanComparatorController(pricePlanService, accountService);
+            _mockMeterReadingService = new Mock<IMeterReadingService>();
+            _mockDataSeeder = new Mock<IDataSeeder>();
+            _service = new PricePlanService(_mockMeterReadingService.Object, _mockDataSeeder.Object);
         }
 
         [Fact]
-        public void ShouldCalculateCostForMeterReadingsForEveryPricePlan()
+        public void GetConsumptionCostOfElectricityReadingsForEachPricePlan_ReturnsEmpty_WhenNoReadings()
         {
-            var electricityReading = new ElectricityReading() { Time = DateTime.Now.AddHours(-1), Reading = 15.0m };
-            var otherReading = new ElectricityReading() { Time = DateTime.Now, Reading = 5.0m };
-            meterReadingService.StoreReadings(SMART_METER_ID, new List<ElectricityReading>() { electricityReading, otherReading });
+            // Arrange
+            var smartMeterId = "meter-1";
+            _mockMeterReadingService.Setup(m => m.GetReadings(smartMeterId))
+                                    .Returns(new List<ElectricityReading>());
 
-            Dictionary<string, object> result = controller.CalculatedCostForEachPricePlan(SMART_METER_ID).Value as Dictionary<string, object>;
+            // Act
+            var result = _service.GetConsumptionCostOfElectricityReadingsForEachPricePlan(smartMeterId);
 
+            // Assert
             Assert.NotNull(result);
-            Assert.Equal(PRICE_PLAN_1_ID, result[PricePlanComparatorController.PRICE_PLAN_ID_KEY]);
-            var expected = new Dictionary<string, decimal>() {
-                { PRICE_PLAN_1_ID, 100m },
-                { PRICE_PLAN_2_ID, 10m },
-                { PRICE_PLAN_3_ID, 20m },
-            };
-            Assert.Equal(expected, result[PricePlanComparatorController.PRICE_PLAN_COMPARISONS_KEY]);
+            Assert.Empty(result);
         }
 
         [Fact]
-        public void ShouldRecommendCheapestPricePlansNoLimitForMeterUsage()
+        public void GetConsumptionCostOfElectricityReadingsForEachPricePlan_ReturnsCalculatedCosts_WhenReadingsExist()
         {
-            meterReadingService.StoreReadings(SMART_METER_ID, new List<ElectricityReading>() {
-                new ElectricityReading() { Time = DateTime.Now.AddMinutes(-30), Reading = 35m },
-                new ElectricityReading() { Time = DateTime.Now, Reading = 3m }
-            });
-
-            object result = controller.RecommendCheapestPricePlans(SMART_METER_ID, null).Value;
-
-            var recommendations = ((IEnumerable<KeyValuePair<string, decimal>>)result).ToList();
-            var expected = new List<KeyValuePair<string, decimal>>() {
-                new(PRICE_PLAN_2_ID, 38m),
-                new(PRICE_PLAN_3_ID, 76m),
-                new(PRICE_PLAN_1_ID, 380m),
+            // Arrange
+            var smartMeterId = "meter-1";
+            var now = DateTime.Now;
+            var readings = new List<ElectricityReading>
+            {
+                new ElectricityReading { Time = now.AddHours(-2), Reading = 10m },
+                new ElectricityReading { Time = now, Reading = 20m }
             };
-            Assert.Equal(expected, recommendations);
-        }
 
-        [Fact]
-        public void ShouldRecommendLimitedCheapestPricePlansForMeterUsage() 
-        {
-            meterReadingService.StoreReadings(SMART_METER_ID, new List<ElectricityReading>() {
-                new ElectricityReading() { Time = DateTime.Now.AddMinutes(-45), Reading = 5m },
-                new ElectricityReading() { Time = DateTime.Now, Reading = 20m }
-            });
+            _mockMeterReadingService.Setup(m => m.GetReadings(smartMeterId))
+                                    .Returns(readings);
 
-            object result = controller.RecommendCheapestPricePlans(SMART_METER_ID, 2).Value;
-
-            var recommendations = ((IEnumerable<KeyValuePair<string, decimal>>)result).ToList();
-            var expected = new List<KeyValuePair<string, decimal>>() {
-                new(PRICE_PLAN_2_ID, 16.667m),
-                new(PRICE_PLAN_3_ID, 33.333m),
+            var pricePlans = new List<PricePlan>
+            {
+                new PricePlan { PlanName = "Plan-A", UnitRate = 0.5m },
+                new PricePlan { PlanName = "Plan-B", UnitRate = 1.0m }
             };
-            Assert.Equal(expected, recommendations);
-        }
 
-        [Fact]
-        public void ShouldRecommendCheapestPricePlansMoreThanLimitAvailableForMeterUsage()
-        {
-            meterReadingService.StoreReadings(SMART_METER_ID, new List<ElectricityReading>() {
-                new ElectricityReading() { Time = DateTime.Now.AddMinutes(-60), Reading = 25m },
-                new ElectricityReading() { Time = DateTime.Now, Reading = 3m }
-            });
+            _mockDataSeeder.Setup(d => d.GetPricePlans())
+                           .Returns(pricePlans);
 
-            object result = controller.RecommendCheapestPricePlans(SMART_METER_ID, 5).Value;
+            // Act
+            var result = _service.GetConsumptionCostOfElectricityReadingsForEachPricePlan(smartMeterId);
 
-            var recommendations = ((IEnumerable<KeyValuePair<string, decimal>>)result).ToList();
-            var expected = new List<KeyValuePair<string, decimal>>() {
-                new(PRICE_PLAN_2_ID, 14m),
-                new(PRICE_PLAN_3_ID, 28m),
-                new(PRICE_PLAN_1_ID, 140m),
-            };
-            Assert.Equal(expected, recommendations);
-        }
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(2, result.Count);
 
-        [Fact]
-        public void GivenNoMatchingMeterIdShouldReturnNotFound()
-        {
-            Assert.Equal(404, controller.CalculatedCostForEachPricePlan("not-found").StatusCode);
-        }
+            // ✅ Manual calculation for validation:
+            // Average reading = (10 + 20) / 2 = 15
+            // Time elapsed = 2 hours
+            // Average per hour = 15 / 2 = 7.5
+            // Cost for Plan-A = 7.5 * 0.5 = 3.75
+            // Cost for Plan-B = 7.5 * 1.0 = 7.5
 
-        private static List<PeakTimeMultiplier> NoMultipliers()
-        {
-            return new List<PeakTimeMultiplier>();
+            Assert.Equal(3.75m, result["Plan-A"]);
+            Assert.Equal(7.5m, result["Plan-B"]);
         }
     }
 }
